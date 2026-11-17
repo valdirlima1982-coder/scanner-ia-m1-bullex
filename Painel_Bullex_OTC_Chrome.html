@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b1220">
+<title>Bullex OTC | Monitor M1</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1220;--panel:#121d31;--line:#263650;--muted:#9aaac2;--green:#39d6a0;--red:#ff7777;--gold:#f0c36a}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:#eef4ff;font:15px system-ui,-apple-system,Segoe UI,Arial}
+main{max-width:1050px;margin:auto;padding:16px}.head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+h1{font-size:21px;margin:0}.sub{font-size:12px;color:var(--muted);margin-top:4px}
+.pill{border:1px solid var(--line);border-radius:30px;padding:8px 11px;font-size:12px}.led{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--gold);margin-right:7px}
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:17px 0}.metric,.panel{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:14px}
+.k{font-size:11px;color:var(--muted)}.v{font-size:25px;font-weight:750;margin-top:5px}
+.columns{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.5fr);gap:11px}
+input{width:100%;border:1px solid var(--line);border-radius:9px;background:#0b1527;color:#fff;padding:11px;margin:10px 0}
+button{border:0;border-radius:9px;padding:10px 13px;background:#3567c7;color:white;font-weight:650}
+button.secondary{background:#24344f}.pairlist{max-height:460px;overflow:auto;margin-top:8px}
+.pair{display:flex;justify-content:space-between;gap:8px;padding:12px 8px;border-bottom:1px solid var(--line);cursor:pointer}
+.pair.selected,.pair:active{background:#20314d}.muted{color:var(--muted)}.tiny{font-size:11px}
+table{width:100%;border-collapse:collapse;margin-top:12px;font-size:12px}td,th{text-align:right;padding:9px 5px;border-bottom:1px solid var(--line)}td:first-child,th:first-child{text-align:left}
+.warn{border:1px solid #6c572b;background:#302817;color:#f3d89c;padding:12px;border-radius:10px;margin-top:13px;font-size:12px;line-height:1.5}
+.err{color:var(--red);white-space:pre-wrap;font-size:12px}.good{color:var(--green)}
+button:disabled{opacity:.5}
+@media(max-width:680px){main{padding:12px}.metrics{grid-template-columns:repeat(3,1fr);gap:7px}.metric{padding:10px 8px}.v{font-size:20px}.columns{grid-template-columns:1fr}.pairlist{max-height:300px}}
+</style></head>
+<body><main>
+<header class="head">
+ <div><h1>Bullex OTC <span style="color:#7ea8ff">/</span> Monitor M1</h1><div class="sub">Painel de leitura • não envia ordens • atualização automática</div></div>
+ <div class="pill" id="connection"><span class="led"></span>Aguardando serviço da API</div>
+</header>
+<section class="metrics">
+ <div class="metric"><div class="k">CONEXÃO</div><div class="v" id="conn">—</div></div>
+ <div class="metric"><div class="k">PARES OTC</div><div class="v" id="total">—</div></div>
+ <div class="metric"><div class="k">ATUALIZADO</div><div class="v" style="font-size:16px" id="updated">—</div></div>
+</section>
+<div class="columns">
+ <section class="panel">
+  <b>Ativos OTC encontrados</b>
+  <input id="search" placeholder="Filtrar por exemplo EURUSD-OTC">
+  <div class="pairlist" id="pairlist"><p class="muted tiny">Conecte o serviço para carregar os pares reais.</p></div>
+ </section>
+ <section class="panel">
+  <b id="chosen">Selecione um par</b>
+  <div class="sub">Candles de 1 minuto recebidos da API</div>
+  <div id="candleinfo" class="muted" style="margin-top:17px">Nenhum ativo selecionado.</div>
+  <div id="candletable"></div>
+ </section>
+</div>
+<section class="panel" style="margin-top:11px">
+ <b>Endereço do serviço</b>
+ <div class="sub">Quando a API estiver hospedada, informe aqui o endereço fornecido pelo servidor.</div>
+ <input id="apiurl" placeholder="https://seu-servidor.exemplo.com">
+ <button id="save">Conectar / testar</button>
+ <button class="secondary" id="refresh">Atualizar agora</button>
+ <div id="feedback" class="tiny muted" style="margin-top:10px">Este painel não consegue autenticar diretamente na Bullex pelo navegador. Ele consulta um serviço intermediário seguro.</div>
+</section>
+<div class="warn"><b>Importante:</b> o README enviado descreve métodos de uma biblioteca Python, mas não contém a biblioteca nem um endereço de API oficial. Para receber cotações reais no Chrome do celular, o serviço Python precisa estar instalado e hospedado em um computador/servidor ligado. Não informe sua senha da Bullex nesta página. Este painel não inventa pares ou preços: se o serviço não responder, os dados ficam vazios.</div>
+<div id="errors" class="err" style="margin-top:10px"></div>
+</main>
+<script>
+const $=x=>document.getElementById(x);let base=localStorage.getItem('bullex_api_base')||'',pairs=[],selected=null;
+$('apiurl').value=base;
+function url(path){return base.replace(/\/+$/,'')+path}
+async function req(path){if(!base)throw Error('Informe o endereço do serviço Python primeiro.');let r=await fetch(url(path),{cache:'no-store'});let j=await r.json();if(!r.ok)throw Error(j.error||('HTTP '+r.status));return j}
+function showError(e){$('errors').textContent=e.message||String(e)}
+async function status(){try{let s=await req('/api/status');let ok=!!s.connected;$('conn').textContent=ok?'OK':'OFF';$('conn').className='v '+(ok?'good':'err');$('connection').innerHTML='<span class="led" style="background:'+(ok?'#39d6a0':'#ff7777')+'"></span>'+(ok?'Serviço conectado':'Serviço sem conexão com a Bullex');if(s.error)$('feedback').textContent=s.error;}catch(e){$('conn').textContent='—';$('connection').innerHTML='<span class="led"></span>Sem resposta do serviço';showError(e)}}
+async function loadPairs(){try{let d=await req('/api/pairs');pairs=d.pairs||[];$('total').textContent=d.count??pairs.length;$('updated').textContent=new Date().toLocaleTimeString();renderPairs();if(selected)loadCandles();}catch(e){$('total').textContent='—';showError(e)}}
+function renderPairs(){let q=$('search').value.toLowerCase();let list=pairs.filter(p=>(p.symbol||'').toLowerCase().includes(q));$('pairlist').innerHTML=list.length?list.map(p=>`<div class="pair ${selected===p.symbol?'selected':''}" data-s="${encodeURIComponent(p.symbol)}"><span>${p.symbol}</span><span class="tiny muted">OTC</span></div>`).join(''):'<p class="muted tiny">Nenhum par OTC retornado pelo serviço.</p>';document.querySelectorAll('.pair').forEach(el=>el.onclick=()=>{selected=decodeURIComponent(el.dataset.s);$('chosen').textContent=selected;renderPairs();loadCandles()})}
+async function loadCandles(){if(!selected)return; $('candleinfo').textContent='Buscando candles M1…';try{let d=await req('/api/candles/'+encodeURIComponent(selected));let rows=d.candles||[];$('candleinfo').textContent=rows.length+' candles retornados. Resposta: '+new Date((d.received_at||Date.now()/1000)*1000).toLocaleTimeString();$('candletable').innerHTML=rows.length?'<table><thead><tr><th>Hora</th><th>Abertura</th><th>Fechamento</th><th>Mínima</th><th>Máxima</th></tr></thead><tbody>'+rows.slice(-15).reverse().map(c=>`<tr><td>${c.time?new Date(c.time*1000).toLocaleTimeString():'—'}</td><td>${c.open??'—'}</td><td>${c.close??'—'}</td><td>${c.min??'—'}</td><td>${c.max??'—'}</td></tr>`).join('')+'</tbody></table>':'<p class="muted tiny">A API não retornou candles para este ativo.</p>'}catch(e){$('candleinfo').textContent='Falha ao consultar candles.';showError(e)}}
+$('save').onclick=async()=>{base=$('apiurl').value.trim();localStorage.setItem('bullex_api_base',base);$('errors').textContent='';await status();await loadPairs()};
+$('refresh').onclick=async()=>{await status();await loadPairs()};
+$('search').oninput=renderPairs;
+if(base){status();loadPairs()}else{$('feedback').textContent='Ainda falta o endereço do serviço Python. O arquivo abre no Chrome, mas não consegue falar diretamente com a biblioteca Bullex.'}
+setInterval(()=>{if(base){status();loadPairs()}},10000);
+</script></body></html>
